@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "opensearch-mcp-server": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./build/index.js"],
+      "env": {
+        "OPENSEARCH_URL": "https://vpc-datapower-pgozvoqh3qru52os6iergjdm5y.af-south-1.es.amazonaws.com:443",
+        "OPENSEARCH_USERNAME": "mq-opensearch",
+        "OPENSEARCH_PASSWORD": "Cj~%4&1[7F.x",
+        "OPENSEARCH_REJECT_UNAUTHORIZED": "false",
+        "OPENSEARCH_DEFAULT_INDEX": "Thabz-logs%{+YYYY.MM.dd}"
+      }
+    }
+  }
+}

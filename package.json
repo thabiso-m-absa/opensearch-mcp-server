@@ -1,0 +1,43 @@
+{
+  "name": "opensearch-mcp-server",
+  "version": "1.0.0",
+  "description": "Model Context Protocol (MCP) server for OpenSearch integration",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsc && node build/index.js",
+    "clean": "rm -rf build",
+    "test": "npm run build && npm run start -- --help",
+    "docker:build": "docker build -t opensearch-mcp-server .",
+    "docker:run": "docker run -p 3000:3000 opensearch-mcp-server"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "opensearch",
+    "elasticsearch",
+    "search",
+    "analytics",
+    "logging"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "@opensearch-project/opensearch": "^2.4.0",
+    "axios": "^1.6.0",
+    "dotenv": "^17.2.3",
+    "html-pdf": "^3.0.1",
+    "marked": "^16.4.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "index.js"
+}

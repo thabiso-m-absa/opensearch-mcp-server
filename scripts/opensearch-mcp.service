@@ -1,0 +1,39 @@
+[Unit]
+Description=OpenSearch MCP Server
+Documentation=https://github.com/your-org/opensearch-mcp-server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=opensearch-mcp
+Group=opensearch-mcp
+WorkingDirectory=/opt/opensearch-mcp-server
+ExecStart=/usr/bin/node /opt/opensearch-mcp-server/build/index.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opensearch-mcp
+
+# Environment variables
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/opensearch-mcp-server/config
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/opensearch-mcp-server
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target
