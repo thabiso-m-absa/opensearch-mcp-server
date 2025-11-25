@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "opensearch-mcp-server": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./build/index.js"],
+      "env": {
+        "OPENSEARCH_URL": "https://localhost:9200",
+        "OPENSEARCH_USERNAME": "admin",
+        "OPENSEARCH_PASSWORD": "admin",
+        "OPENSEARCH_REJECT_UNAUTHORIZED": "false",
+        "OPENSEARCH_DEFAULT_INDEX": "logs-*"
+      }
+    }
+  }
+}

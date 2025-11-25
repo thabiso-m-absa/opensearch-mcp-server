@@ -1,0 +1,29 @@
+{
+  "servers": {
+    "opensearch-poc": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./build/index.js"],
+      "env": {
+        "OPENSEARCH_CLUSTER_NAME": "poc",
+        "OPENSEARCH_URL": "https://example.com:443",
+        "OPENSEARCH_USERNAME": "admin123",
+        "OPENSEARCH_PASSWORD": "admin",
+        "OPENSEARCH_REJECT_UNAUTHORIZED": "false",
+        "OPENSEARCH_DEFAULT_INDEX": "logs%{+YYYY.MM.dd}"
+      }
+    },
+    "opensearch-icubed": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./build/index.js"],
+      "env": {
+        "OPENSEARCH_CLUSTER_NAME": "icubed",
+        "OPENSEARCH_URL": "https://example.com:443",
+        "OPENSEARCH_USERNAME": "admin",
+        "OPENSEARCH_PASSWORD": "admin123",
+        "OPENSEARCH_REJECT_UNAUTHORIZED": "false"
+      }
+    }
+  }
+}

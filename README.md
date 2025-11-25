@@ -2,9 +2,19 @@
 
 A comprehensive Model Context Protocol (MCP) server that provides seamless integration with OpenSearch clusters. This server enables AI systems to search, index, aggregate, and manage data in OpenSearch through a standardized MCP interface.
 
+**✨ Multi-Cluster Support:** Connect to multiple OpenSearch clusters simultaneously and route operations to specific clusters as needed.
+
 ## Features
 
+### 🌐 **Multi-Cluster Management**
+
+- Connect to multiple OpenSearch clusters in a single server instance
+- Route operations to specific clusters dynamically
+- Default cluster configuration with override capability
+- Backward compatible with single-cluster setups
+
 ### 🔍 **Search & Query**
+
 - Full-text search with Query DSL support
 - Simple query string interface
 - Advanced filtering and sorting
@@ -12,30 +22,35 @@ A comprehensive Model Context Protocol (MCP) server that provides seamless integ
 - Scroll API for large result sets
 
 ### 📊 **Analytics & Aggregations**
+
 - Metric aggregations (avg, sum, count, etc.)
 - Bucket aggregations (terms, date histogram, etc.)
 - Complex nested aggregations
 - Statistical analysis
 
 ### 📄 **Document Management**
+
 - Index documents with auto-ID generation
 - Bulk operations for high-throughput scenarios
 - Get, update, and delete documents by ID
 - Upsert operations with conflict resolution
 
 ### 🗂️ **Index Management**
+
 - Create and delete indices
 - Manage field mappings and index settings
 - Index statistics and health monitoring
 - Alias management
 
 ### 🏥 **Cluster Operations**
+
 - Cluster health and status monitoring
 - Node statistics and performance metrics
 - Shard allocation information
 - Version and build information
 
 ### 🤖 **AI-Friendly Tools**
+
 - Query builder prompts with best practices
 - Aggregation design assistance
 - Mapping optimization suggestions
@@ -45,13 +60,14 @@ A comprehensive Model Context Protocol (MCP) server that provides seamless integ
 
 ### Prerequisites
 
-- **Node.js** 18+ 
+- **Node.js** 18+
 - **OpenSearch** cluster (local or remote)
 - **VS Code** with MCP support (for development)
 
 ### Installation
 
 #### Option 1: VS Code Development
+
 ```bash
 # Clone the repository
 git clone <repository-url>
@@ -74,6 +90,7 @@ npm start
 ```
 
 #### Option 2: Linux Server Deployment
+
 ```bash
 # Make installation script executable
 chmod +x install-linux.sh
@@ -89,6 +106,7 @@ sudo systemctl restart opensearch-mcp
 ```
 
 #### Option 3: Docker Deployment
+
 ```bash
 # Quick start with Docker Compose
 ./docker-deploy.sh start
@@ -99,23 +117,67 @@ docker-compose up -d
 
 ## Configuration
 
-### Environment Variables
+### Multi-Cluster Setup
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `OPENSEARCH_URL` | OpenSearch cluster endpoint | `https://localhost:9200` | ✅ |
-| `OPENSEARCH_USERNAME` | Authentication username | `admin` | ✅ |
-| `OPENSEARCH_PASSWORD` | Authentication password | `admin` | ✅ |
-| `OPENSEARCH_API_KEY` | Alternative API key auth | - | ❌ |
-| `OPENSEARCH_REJECT_UNAUTHORIZED` | SSL certificate validation | `true` | ❌ |
-| `OPENSEARCH_CA_CERT_PATH` | Path to CA certificate | - | ❌ |
-| `OPENSEARCH_REQUEST_TIMEOUT` | Request timeout (ms) | `30000` | ❌ |
-| `OPENSEARCH_DEFAULT_INDEX` | Default index pattern | - | ❌ |
-| `OPENSEARCH_INDEX_PREFIX` | Index name prefix | - | ❌ |
+The server supports connecting to multiple OpenSearch clusters simultaneously. You can configure clusters in two ways:
+
+#### Option 1: Multi-Cluster JSON Configuration
+
+Use the `OPENSEARCH_CLUSTERS` environment variable with a JSON string:
+
+| Variable                     | Description                                           | Required |
+| ---------------------------- | ----------------------------------------------------- | -------- |
+| `OPENSEARCH_CLUSTERS`        | JSON object with named cluster configurations         | ✅       |
+| `OPENSEARCH_DEFAULT_CLUSTER` | Default cluster name when not specified in tool calls | ❌       |
+
+**Example:**
+
+```json
+{
+  "OPENSEARCH_CLUSTERS": "{\"production\":{\"node\":\"https://prod-cluster:9200\",\"auth\":{\"username\":\"admin\",\"password\":\"secret\"}},\"staging\":{\"node\":\"https://staging-cluster:9200\",\"auth\":{\"username\":\"admin\",\"password\":\"secret\"}}}",
+  "OPENSEARCH_DEFAULT_CLUSTER": "production"
+}
+```
+
+#### Option 2: Legacy Single Cluster Configuration
+
+For backward compatibility, use individual environment variables (automatically creates a "default" cluster):
+
+| Variable                         | Description                 | Default                  | Required |
+| -------------------------------- | --------------------------- | ------------------------ | -------- |
+| `OPENSEARCH_URL`                 | OpenSearch cluster endpoint | `https://localhost:9200` | ✅       |
+| `OPENSEARCH_USERNAME`            | Authentication username     | `admin`                  | ✅       |
+| `OPENSEARCH_PASSWORD`            | Authentication password     | `admin`                  | ✅       |
+| `OPENSEARCH_API_KEY`             | Alternative API key auth    | -                        | ❌       |
+| `OPENSEARCH_REJECT_UNAUTHORIZED` | SSL certificate validation  | `true`                   | ❌       |
+| `OPENSEARCH_CA_CERT_PATH`        | Path to CA certificate      | -                        | ❌       |
+| `OPENSEARCH_REQUEST_TIMEOUT`     | Request timeout (ms)        | `30000`                  | ❌       |
+| `OPENSEARCH_DEFAULT_INDEX`       | Default index pattern       | -                        | ❌       |
+| `OPENSEARCH_INDEX_PREFIX`        | Index name prefix           | -                        | ❌       |
 
 ### VS Code Configuration
 
+#### Multi-Cluster Example
+
 Add to your VS Code `mcp.json`:
+
+```json
+{
+  "servers": {
+    "opensearch-mcp-server": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./build/index.js"],
+      "env": {
+        "OPENSEARCH_CLUSTERS": "{\"production\":{\"node\":\"https://prod-cluster:9200\",\"auth\":{\"username\":\"admin\",\"password\":\"secret\"},\"ssl\":{\"rejectUnauthorized\":false}},\"staging\":{\"node\":\"https://staging-cluster:9200\",\"auth\":{\"username\":\"admin\",\"password\":\"secret\"},\"ssl\":{\"rejectUnauthorized\":false}}}",
+        "OPENSEARCH_DEFAULT_CLUSTER": "production"
+      }
+    }
+  }
+}
+```
+
+#### Single Cluster (Legacy) Example
 
 ```json
 {
@@ -136,12 +198,23 @@ Add to your VS Code `mcp.json`:
 
 ## API Reference
 
+### Cluster Management
+
+#### `opensearch_list_clusters`
+
+List all available OpenSearch clusters and the default cluster.
+
+**Returns:** List of cluster names and default cluster configuration.
+
 ### Search Tools
 
 #### `opensearch_search`
+
 Search for documents using Query DSL or simple query strings.
 
 **Parameters:**
+
+- `cluster` (string, optional): Cluster name to query (uses default if not specified)
 - `index` (string, optional): Index name or pattern
 - `query` (object, optional): OpenSearch Query DSL object
 - `q` (string, optional): Simple query string
@@ -152,6 +225,7 @@ Search for documents using Query DSL or simple query strings.
 - `highlight` (object): Highlighting configuration
 
 **Example:**
+
 ```json
 {
   "name": "opensearch_search",
@@ -163,21 +237,25 @@ Search for documents using Query DSL or simple query strings.
       }
     },
     "size": 20,
-    "sort": [{"@timestamp": "desc"}]
+    "sort": [{ "@timestamp": "desc" }]
   }
 }
 ```
 
 #### `opensearch_aggregate`
+
 Perform aggregations for analytics and reporting.
 
 **Parameters:**
+
+- `cluster` (string, optional): Cluster name (uses default if not specified)
 - `index` (string): Index name to aggregate
 - `aggregations` (object): Aggregation specifications
 - `query` (object, optional): Filter query before aggregation
 - `size` (number): Document hits to return (default: 0)
 
 **Example:**
+
 ```json
 {
   "name": "opensearch_aggregate",
@@ -203,15 +281,19 @@ Perform aggregations for analytics and reporting.
 ### Document Management Tools
 
 #### `opensearch_index_document`
+
 Index a single document.
 
 **Parameters:**
+
+- `cluster` (string, optional): Cluster name (uses default if not specified)
 - `index` (string): Target index name
 - `id` (string, optional): Document ID (auto-generated if omitted)
 - `document` (object): Document data
 - `refresh` (boolean|string): Refresh policy
 
 **Example:**
+
 ```json
 {
   "name": "opensearch_index_document",
@@ -229,22 +311,25 @@ Index a single document.
 ```
 
 #### `opensearch_bulk_index`
+
 Perform bulk operations for high throughput.
 
 **Parameters:**
+
 - `operations` (array): Array of bulk operation objects
 - `refresh` (boolean|string): Refresh policy
 
 **Example:**
+
 ```json
 {
   "name": "opensearch_bulk_index",
   "arguments": {
     "operations": [
-      {"index": {"_index": "logs", "_id": "1"}},
-      {"message": "First log entry", "level": "info"},
-      {"index": {"_index": "logs", "_id": "2"}},
-      {"message": "Second log entry", "level": "warn"}
+      { "index": { "_index": "logs", "_id": "1" } },
+      { "message": "First log entry", "level": "info" },
+      { "index": { "_index": "logs", "_id": "2" } },
+      { "message": "Second log entry", "level": "warn" }
     ],
     "refresh": "wait_for"
   }
@@ -254,14 +339,17 @@ Perform bulk operations for high throughput.
 ### Index Management Tools
 
 #### `opensearch_create_index`
+
 Create a new index with settings and mappings.
 
 **Parameters:**
+
 - `index` (string): Index name
 - `settings` (object, optional): Index settings
 - `mappings` (object, optional): Field mappings
 
 **Example:**
+
 ```json
 {
   "name": "opensearch_create_index",
@@ -275,10 +363,10 @@ Create a new index with settings and mappings.
     },
     "mappings": {
       "properties": {
-        "timestamp": {"type": "date"},
-        "level": {"type": "keyword"},
-        "message": {"type": "text"},
-        "service": {"type": "keyword"}
+        "timestamp": { "type": "date" },
+        "level": { "type": "keyword" },
+        "message": { "type": "text" },
+        "service": { "type": "keyword" }
       }
     }
   }
@@ -288,15 +376,18 @@ Create a new index with settings and mappings.
 ### Cluster Management Tools
 
 #### `opensearch_cluster_health`
+
 Get cluster health and status information.
 
 **Parameters:**
+
 - `index` (string, optional): Specific index to check
 - `level` (string): Detail level (cluster, indices, shards)
 - `wait_for_status` (string, optional): Wait for specific status
 - `timeout` (string): Timeout for wait operations
 
 **Example:**
+
 ```json
 {
   "name": "opensearch_cluster_health",
@@ -315,6 +406,7 @@ Get cluster health and status information.
 The server includes AI-friendly prompts to help build complex queries:
 
 #### Query Builder
+
 ```json
 {
   "name": "opensearch_query_builder",
@@ -327,6 +419,7 @@ The server includes AI-friendly prompts to help build complex queries:
 ```
 
 #### Aggregation Builder
+
 ```json
 {
   "name": "opensearch_aggregation_builder",
@@ -341,17 +434,20 @@ The server includes AI-friendly prompts to help build complex queries:
 ### Performance Optimization
 
 #### Search Performance
+
 - Use specific index patterns instead of wildcards
 - Limit `size` parameter for large result sets
 - Use `_source` filtering to reduce network overhead
 - Implement proper pagination with `from` and `size`
 
 #### Indexing Performance
+
 - Use bulk operations for multiple documents
 - Set appropriate refresh intervals
 - Consider async refresh policies for high-throughput scenarios
 
 #### Aggregation Performance
+
 - Use `size: 0` to skip document hits when only aggregations are needed
 - Implement proper field mappings for aggregated fields
 - Use appropriate bucket sizes for date histograms
@@ -359,18 +455,22 @@ The server includes AI-friendly prompts to help build complex queries:
 ## Deployment Scenarios
 
 ### VS Code Development
+
 Perfect for development, testing, and interactive data exploration with AI assistance.
 
 **Setup:**
+
 1. Install dependencies with `npm install`
 2. Configure `.env` file
 3. Add to VS Code `mcp.json`
 4. Build and run with `npm run build && npm start`
 
 ### Linux Server Production
+
 Ideal for production environments with proper service management, logging, and monitoring.
 
 **Features:**
+
 - Systemd service management
 - Automatic startup on boot
 - Structured logging
@@ -378,6 +478,7 @@ Ideal for production environments with proper service management, logging, and m
 - Configuration management
 
 **Management:**
+
 ```bash
 # Service management
 sudo systemctl start opensearch-mcp
@@ -391,9 +492,11 @@ sudo journalctl -u opensearch-mcp -f
 ```
 
 ### Docker Container
+
 Best for containerized deployments, development environments, and cloud platforms.
 
 **Features:**
+
 - Complete OpenSearch stack included
 - Configurable through environment variables
 - Health checks and monitoring
@@ -401,6 +504,7 @@ Best for containerized deployments, development environments, and cloud platform
 - Network isolation
 
 **Usage:**
+
 ```bash
 # Development setup
 ./docker-deploy.sh start
@@ -416,17 +520,20 @@ docker-compose -f docker-compose.prod.yml up -d
 ## Security Considerations
 
 ### Authentication
+
 - Always use strong passwords for OpenSearch clusters
 - Consider API key authentication for programmatic access
 - Implement proper user roles and permissions
 
 ### Network Security
+
 - Use HTTPS/TLS for OpenSearch connections
 - Validate SSL certificates in production (`OPENSEARCH_REJECT_UNAUTHORIZED=true`)
 - Implement network firewalls and access controls
 - Use VPNs or private networks for cluster access
 
 ### Data Protection
+
 - Enable audit logging in OpenSearch
 - Implement field-level security for sensitive data
 - Use index-level permissions and access controls
@@ -437,6 +544,7 @@ docker-compose -f docker-compose.prod.yml up -d
 ### Common Issues
 
 #### Connection Problems
+
 ```bash
 # Check OpenSearch cluster health
 curl -k -u admin:password https://your-cluster:9200/_cluster/health
@@ -449,11 +557,13 @@ openssl s_client -connect your-cluster:9200 -showcerts
 ```
 
 #### Authentication Failures
+
 - Verify username and password in configuration
 - Check user permissions in OpenSearch
 - Ensure API key is valid and has proper permissions
 
 #### Performance Issues
+
 - Monitor cluster resource usage
 - Check index shard allocation
 - Review query patterns for optimization opportunities
@@ -462,6 +572,7 @@ openssl s_client -connect your-cluster:9200 -showcerts
 ### Debugging
 
 #### Development Mode
+
 ```bash
 # Enable debug logging
 export DEBUG=opensearch-mcp:*
@@ -472,6 +583,7 @@ npm run dev
 ```
 
 #### Production Monitoring
+
 ```bash
 # Check service logs
 journalctl -u opensearch-mcp -f

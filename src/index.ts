@@ -41,10 +41,12 @@ console.log = (...args: any[]) => {
  * - Perform aggregations and analytics
  * - Monitor cluster health and statistics
  * - Manage indices and mappings
+ * - Support multiple OpenSearch clusters
  */
 class OpenSearchMCPServer {
   private server: Server;
-  private opensearch: OpenSearchClient | null = null;
+  private opensearchClients: Map<string, OpenSearchClient> = new Map();
+  private config: any = null;
 
   constructor() {
     this.server = new Server(
@@ -67,10 +69,10 @@ class OpenSearchMCPServer {
   }
 
   /**
-   * Initialize OpenSearch client from configuration
+   * Initialize OpenSearch clients from configuration
    */
   private async initializeOpenSearch(): Promise<void> {
-    if (this.opensearch) {
+    if (this.opensearchClients.size > 0) {
       return; // Already initialized
     }
 
@@ -79,20 +81,30 @@ class OpenSearchMCPServer {
       const envConfig = createConfigFromEnv();
       
       // Validate configuration
-      const config = validateConfig(envConfig);
+      this.config = validateConfig(envConfig);
       
-      // Create client
-      this.opensearch = new OpenSearchClient(config);
-      
-      // Test connection
-      const isConnected = await this.opensearch.ping();
-      if (!isConnected) {
-        throw new Error("Failed to connect to OpenSearch cluster");
+      // Create clients for each cluster
+      for (const [clusterName, clusterConfig] of Object.entries(this.config.clusters)) {
+        const client = new OpenSearchClient(clusterConfig as any);
+        
+        // Test connection
+        const isConnected = await client.ping();
+        if (!isConnected) {
+          console.warn(`Warning: Failed to connect to OpenSearch cluster '${clusterName}'`);
+          continue;
+        }
+        
+        this.opensearchClients.set(clusterName, client);
+        console.log(`Successfully connected to OpenSearch cluster '${clusterName}'`);
       }
       
-      console.log("Successfully connected to OpenSearch cluster");
+      if (this.opensearchClients.size === 0) {
+        throw new Error("Failed to connect to any OpenSearch cluster");
+      }
+      
+      console.log(`Initialized ${this.opensearchClients.size} OpenSearch cluster(s)`);
     } catch (error) {
-      console.error("Failed to initialize OpenSearch client:", error);
+      console.error("Failed to initialize OpenSearch clients:", error);
       throw new McpError(
         ErrorCode.InternalError,
         `Failed to initialize OpenSearch: ${error instanceof Error ? error.message : String(error)}`
@@ -101,12 +113,61 @@ class OpenSearchMCPServer {
   }
 
   /**
+   * Get OpenSearch client for specified cluster or first available
+   */
+  private getClient(clusterName?: string): OpenSearchClient {
+    // If no cluster specified, use first available
+    const targetCluster = clusterName || Array.from(this.opensearchClients.keys())[0];
+    
+    if (!targetCluster) {
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        "No clusters configured. Please configure at least one OpenSearch cluster."
+      );
+    }
+    
+    const client = this.opensearchClients.get(targetCluster);
+    if (!client) {
+      const availableClusters = Array.from(this.opensearchClients.keys()).join(', ');
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Cluster '${targetCluster}' not found. Available clusters: ${availableClusters}`
+      );
+    }
+    
+    return client;
+  }
+
+  /**
+   * Get list of available clusters
+   */
+  private getAvailableClusters(): string[] {
+    return Array.from(this.opensearchClients.keys());
+  }
+
+  /**
    * Setup tool handlers for OpenSearch operations
    */
   private setupToolHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      const clusterParam = {
+        cluster: {
+          type: "string",
+          description: "OpenSearch cluster name (optional, uses default cluster if not specified)"
+        }
+      };
+
       return {
         tools: [
+          // Cluster Management Tool
+          {
+            name: "opensearch_list_clusters",
+            description: "List all available OpenSearch clusters",
+            inputSchema: {
+              type: "object",
+              properties: {}
+            }
+          },
           // Search and Query Tools
           {
             name: "opensearch_search",
@@ -114,6 +175,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name to search in (optional if default index is configured)"
@@ -157,6 +219,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name to aggregate data from"
@@ -184,6 +247,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name to count documents in"
@@ -203,6 +267,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name to store the document"
@@ -230,6 +295,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 operations: {
                   type: "array",
                   description: "Array of bulk operations (index, create, update, delete)",
@@ -252,6 +318,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name containing the document"
@@ -274,6 +341,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name containing the document"
@@ -309,6 +377,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name containing the document"
@@ -334,6 +403,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 format: {
                   type: "string",
                   description: "Output format (json, table)",
@@ -356,6 +426,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Name of the index to create"
@@ -378,6 +449,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Name of the index to delete"
@@ -392,6 +464,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name (optional, gets mappings for all indices if not specified)"
@@ -405,6 +478,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name to update mappings for"
@@ -425,6 +499,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Specific index to check health for (optional)"
@@ -453,7 +528,9 @@ class OpenSearchMCPServer {
             description: "Get comprehensive cluster statistics including nodes, indices, and usage metrics",
             inputSchema: {
               type: "object",
-              properties: {}
+              properties: {
+                ...clusterParam
+              }
             }
           },
           {
@@ -462,6 +539,7 @@ class OpenSearchMCPServer {
             inputSchema: {
               type: "object",
               properties: {
+                ...clusterParam,
                 index: {
                   type: "string",
                   description: "Index name (optional, gets stats for all indices if not specified)"
@@ -479,7 +557,187 @@ class OpenSearchMCPServer {
             description: "Get basic cluster information including version and build details",
             inputSchema: {
               type: "object",
-              properties: {}
+              properties: {
+                ...clusterParam
+              }
+            }
+          },
+          // Security Management Tools
+          {
+            name: "opensearch_create_user",
+            description: "Create an internal user with password and optional attributes",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam,
+                username: {
+                  type: "string",
+                  description: "Username for the new user"
+                },
+                password: {
+                  type: "string",
+                  description: "Password for the new user"
+                },
+                attributes: {
+                  type: "object",
+                  description: "Optional user attributes (e.g., email, full_name)"
+                }
+              },
+              required: ["username", "password"]
+            }
+          },
+          {
+            name: "opensearch_delete_user",
+            description: "Delete an internal user",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam,
+                username: {
+                  type: "string",
+                  description: "Username to delete"
+                }
+              },
+              required: ["username"]
+            }
+          },
+          {
+            name: "opensearch_get_user",
+            description: "Get details of a specific user",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam,
+                username: {
+                  type: "string",
+                  description: "Username to retrieve"
+                }
+              },
+              required: ["username"]
+            }
+          },
+          {
+            name: "opensearch_list_users",
+            description: "List all internal users in the cluster",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam
+              }
+            }
+          },
+          {
+            name: "opensearch_create_role",
+            description: "Create a role with specific permissions for indices and cluster operations",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam,
+                role_name: {
+                  type: "string",
+                  description: "Name for the new role"
+                },
+                permissions: {
+                  type: "object",
+                  description: "Role permissions definition including cluster_permissions, index_permissions, and tenant_permissions"
+                }
+              },
+              required: ["role_name", "permissions"]
+            }
+          },
+          {
+            name: "opensearch_delete_role",
+            description: "Delete a role from the cluster",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam,
+                role_name: {
+                  type: "string",
+                  description: "Role name to delete"
+                }
+              },
+              required: ["role_name"]
+            }
+          },
+          {
+            name: "opensearch_get_role",
+            description: "Get details of a specific role",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam,
+                role_name: {
+                  type: "string",
+                  description: "Role name to retrieve"
+                }
+              },
+              required: ["role_name"]
+            }
+          },
+          {
+            name: "opensearch_list_roles",
+            description: "List all roles in the cluster",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam
+              }
+            }
+          },
+          {
+            name: "opensearch_map_role",
+            description: "Map a role to users, backend roles, or hosts",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam,
+                role_name: {
+                  type: "string",
+                  description: "Role name to map"
+                },
+                users: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "List of usernames to assign this role"
+                },
+                backend_roles: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "List of backend roles (e.g., LDAP groups) to assign this role"
+                },
+                hosts: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "List of host patterns to assign this role"
+                }
+              },
+              required: ["role_name"]
+            }
+          },
+          {
+            name: "opensearch_get_role_mapping",
+            description: "Get role mapping details for a specific role",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam,
+                role_name: {
+                  type: "string",
+                  description: "Role name to retrieve mapping for"
+                }
+              },
+              required: ["role_name"]
+            }
+          },
+          {
+            name: "opensearch_list_role_mappings",
+            description: "List all role mappings in the cluster",
+            inputSchema: {
+              type: "object",
+              properties: {
+                ...clusterParam
+              }
             }
           }
         ]
@@ -489,14 +747,16 @@ class OpenSearchMCPServer {
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       await this.initializeOpenSearch();
       
-      if (!this.opensearch) {
-        throw new McpError(ErrorCode.InternalError, "OpenSearch client not initialized");
+      if (this.opensearchClients.size === 0) {
+        throw new McpError(ErrorCode.InternalError, "OpenSearch clients not initialized");
       }
 
       const { name, arguments: args } = request.params;
 
       try {
         switch (name) {
+          case "opensearch_list_clusters":
+            return await this.handleListClusters(args);
           case "opensearch_search":
             return await this.handleSearch(args);
           case "opensearch_aggregate":
@@ -531,6 +791,29 @@ class OpenSearchMCPServer {
             return await this.handleIndexStats(args);
           case "opensearch_cluster_info":
             return await this.handleClusterInfo(args);
+          // Security Management Tools
+          case "opensearch_create_user":
+            return await this.handleCreateUser(args);
+          case "opensearch_delete_user":
+            return await this.handleDeleteUser(args);
+          case "opensearch_get_user":
+            return await this.handleGetUser(args);
+          case "opensearch_list_users":
+            return await this.handleListUsers(args);
+          case "opensearch_create_role":
+            return await this.handleCreateRole(args);
+          case "opensearch_delete_role":
+            return await this.handleDeleteRole(args);
+          case "opensearch_get_role":
+            return await this.handleGetRole(args);
+          case "opensearch_list_roles":
+            return await this.handleListRoles(args);
+          case "opensearch_map_role":
+            return await this.handleMapRole(args);
+          case "opensearch_get_role_mapping":
+            return await this.handleGetRoleMapping(args);
+          case "opensearch_list_role_mappings":
+            return await this.handleListRoleMappings(args);
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
         }
@@ -547,7 +830,23 @@ class OpenSearchMCPServer {
   }
 
   // Tool implementation methods
+  private async handleListClusters(args: any) {
+    const clusters = this.getAvailableClusters();
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            clusters: clusters,
+            count: clusters.length
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
   private async handleSearch(args: any) {
+    const client = this.getClient(args.cluster);
     const searchParams: any = {
       index: args.index,
       size: args.size || 10,
@@ -567,7 +866,7 @@ class OpenSearchMCPServer {
       searchParams.body.highlight = args.highlight;
     }
 
-    const result = await this.opensearch!.search(searchParams);
+    const result = await client.search(searchParams);
     
     return {
       content: [
@@ -580,7 +879,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleAggregate(args: any) {
-    const result = await this.opensearch!.aggregate(args.index, args.aggregations, args.query);
+    const client = this.getClient(args.cluster);
+    const result = await client.aggregate(args.index, args.aggregations, args.query);
     
     return {
       content: [
@@ -593,8 +893,9 @@ class OpenSearchMCPServer {
   }
 
   private async handleCount(args: any) {
+    const client = this.getClient(args.cluster);
     const body = args.query ? { query: args.query } : undefined;
-    const result = await this.opensearch!.count(args.index, body);
+    const result = await client.count(args.index, body);
     
     return {
       content: [
@@ -607,7 +908,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleIndexDocument(args: any) {
-    const result = await this.opensearch!.index({
+    const client = this.getClient(args.cluster);
+    const result = await client.index({
       index: args.index,
       id: args.id,
       body: args.document,
@@ -625,7 +927,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleBulkIndex(args: any) {
-    const result = await this.opensearch!.bulk({
+    const client = this.getClient(args.cluster);
+    const result = await client.bulk({
       body: args.operations,
       refresh: args.refresh
     });
@@ -641,7 +944,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleGetDocument(args: any) {
-    const result = await this.opensearch!.get({
+    const client = this.getClient(args.cluster);
+    const result = await client.get({
       index: args.index,
       id: args.id,
       _source: args._source
@@ -658,12 +962,13 @@ class OpenSearchMCPServer {
   }
 
   private async handleUpdateDocument(args: any) {
+    const client = this.getClient(args.cluster);
     const body: any = {};
     if (args.doc) body.doc = args.doc;
     if (args.script) body.script = args.script;
     if (args.upsert) body.upsert = args.upsert;
 
-    const result = await this.opensearch!.update({
+    const result = await client.update({
       index: args.index,
       id: args.id,
       body,
@@ -681,7 +986,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleDeleteDocument(args: any) {
-    const result = await this.opensearch!.delete({
+    const client = this.getClient(args.cluster);
+    const result = await client.delete({
       index: args.index,
       id: args.id,
       refresh: args.refresh
@@ -698,7 +1004,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleListIndices(args: any) {
-    const result = await this.opensearch!.catIndices(args);
+    const client = this.getClient(args.cluster);
+    const result = await client.catIndices(args);
     
     return {
       content: [
@@ -711,7 +1018,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleCreateIndex(args: any) {
-    const result = await this.opensearch!.createIndex(args.index, args.settings, args.mappings);
+    const client = this.getClient(args.cluster);
+    const result = await client.createIndex(args.index, args.settings, args.mappings);
     
     return {
       content: [
@@ -724,7 +1032,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleDeleteIndex(args: any) {
-    const result = await this.opensearch!.deleteIndex(args.index);
+    const client = this.getClient(args.cluster);
+    const result = await client.deleteIndex(args.index);
     
     return {
       content: [
@@ -737,7 +1046,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleGetMapping(args: any) {
-    const result = await this.opensearch!.getMapping(args.index);
+    const client = this.getClient(args.cluster);
+    const result = await client.getMapping(args.index);
     
     return {
       content: [
@@ -750,7 +1060,8 @@ class OpenSearchMCPServer {
   }
 
   private async handlePutMapping(args: any) {
-    const result = await this.opensearch!.putMapping(args.index, args.mappings);
+    const client = this.getClient(args.cluster);
+    const result = await client.putMapping(args.index, args.mappings);
     
     return {
       content: [
@@ -763,7 +1074,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleClusterHealth(args: any) {
-    const result = await this.opensearch!.clusterHealth(args.index, args);
+    const client = this.getClient(args.cluster);
+    const result = await client.clusterHealth(args.index, args);
     
     return {
       content: [
@@ -776,7 +1088,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleClusterStats(args: any) {
-    const result = await this.opensearch!.clusterStats();
+    const client = this.getClient(args.cluster);
+    const result = await client.clusterStats();
     
     return {
       content: [
@@ -789,7 +1102,8 @@ class OpenSearchMCPServer {
   }
 
   private async handleIndexStats(args: any) {
-    const result = await this.opensearch!.indexStats(args.index);
+    const client = this.getClient(args.cluster);
+    const result = await client.indexStats(args.index);
     
     return {
       content: [
@@ -802,13 +1116,218 @@ class OpenSearchMCPServer {
   }
 
   private async handleClusterInfo(args: any) {
-    const result = await this.opensearch!.info();
+    const client = this.getClient(args.cluster);
+    const result = await client.info();
     
     return {
       content: [
         {
           type: "text",
           text: JSON.stringify(result, null, 2)
+        }
+      ]
+    };
+  }
+
+  // ============================================
+  // Security Management Handlers
+  // ============================================
+
+  private async handleCreateUser(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.createUser(args.username, args.password, args.attributes);
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            message: `User '${args.username}' created successfully`,
+            details: result
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleDeleteUser(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.deleteUser(args.username);
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            message: `User '${args.username}' deleted successfully`,
+            details: result
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleGetUser(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.getUser(args.username);
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleListUsers(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.listUsers();
+    
+    const users = Object.keys(result);
+    const summary = {
+      total_users: users.length,
+      users: users,
+      details: result
+    };
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(summary, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleCreateRole(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.createRole(args.role_name, args.permissions);
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            message: `Role '${args.role_name}' created successfully`,
+            details: result
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleDeleteRole(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.deleteRole(args.role_name);
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            message: `Role '${args.role_name}' deleted successfully`,
+            details: result
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleGetRole(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.getRole(args.role_name);
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleListRoles(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.listRoles();
+    
+    const roles = Object.keys(result);
+    const summary = {
+      total_roles: roles.length,
+      roles: roles,
+      details: result
+    };
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(summary, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleMapRole(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.createRoleMapping(
+      args.role_name,
+      args.users,
+      args.backend_roles,
+      args.hosts
+    );
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            message: `Role mapping for '${args.role_name}' created successfully`,
+            details: result
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleGetRoleMapping(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.getRoleMapping(args.role_name);
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async handleListRoleMappings(args: any) {
+    const client = this.getClient(args.cluster);
+    const result = await client.listRoleMappings();
+    
+    const mappings = Object.keys(result);
+    const summary = {
+      total_mappings: mappings.length,
+      role_mappings: mappings,
+      details: result
+    };
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(summary, null, 2)
         }
       ]
     };
@@ -846,10 +1365,11 @@ class OpenSearchMCPServer {
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       await this.initializeOpenSearch();
       
-      if (!this.opensearch) {
-        throw new McpError(ErrorCode.InternalError, "OpenSearch client not initialized");
+      if (this.opensearchClients.size === 0) {
+        throw new McpError(ErrorCode.InternalError, "OpenSearch clients not initialized");
       }
 
+      const client = this.getClient();
       const { uri } = request.params;
 
       try {
@@ -857,13 +1377,13 @@ class OpenSearchMCPServer {
         
         switch (uri) {
           case "opensearch://cluster/info":
-            data = await this.opensearch.info();
+            data = await client.info();
             break;
           case "opensearch://cluster/health":
-            data = await this.opensearch.clusterHealth();
+            data = await client.clusterHealth();
             break;
           case "opensearch://indices/list":
-            data = await this.opensearch.catIndices();
+            data = await client.catIndices();
             break;
           default:
             throw new McpError(ErrorCode.InvalidRequest, `Unknown resource: ${uri}`);
@@ -1046,8 +1566,9 @@ Please provide:
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
       console.log('Shutting down OpenSearch MCP server...');
-      if (this.opensearch) {
-        await this.opensearch.close();
+      for (const [name, client] of this.opensearchClients) {
+        console.log(`Closing connection to cluster '${name}'...`);
+        await client.close();
       }
       process.exit(0);
     });

@@ -1,7 +1,7 @@
 import { Client } from '@opensearch-project/opensearch';
 import * as fs from 'fs';
 import * as https from 'https';
-import { OpenSearchConfig } from '../types/config.js';
+import { OpenSearchClusterConfig } from '../types/config.js';
 import {
   BulkRequest,
   BulkResponse,
@@ -29,9 +29,9 @@ import {
  */
 export class OpenSearchClient {
   private client: Client;
-  private config: OpenSearchConfig;
+  private config: OpenSearchClusterConfig;
 
-  constructor(config: OpenSearchConfig) {
+  constructor(config: OpenSearchClusterConfig) {
     this.config = config;
     this.client = this.createClient(config);
   }
@@ -39,7 +39,7 @@ export class OpenSearchClient {
   /**
    * Create OpenSearch client with proper configuration
    */
-  private createClient(config: OpenSearchConfig): Client {
+  private createClient(config: OpenSearchClusterConfig): Client {
     const clientConfig: any = {
       node: config.node,
       nodes: config.nodes,
@@ -491,6 +491,230 @@ export class OpenSearchClient {
       return `${this.config.indexPrefix}${index}`;
     }
     return index;
+  }
+
+  // ============================================
+  // Security Management APIs
+  // ============================================
+
+  /**
+   * Create an internal user
+   */
+  async createUser(username: string, password: string, attributes?: any): Promise<any> {
+    try {
+      const body: any = {
+        password,
+      };
+
+      if (attributes) {
+        body.attributes = attributes;
+      }
+
+      const response = await this.client.transport.request({
+        method: 'PUT',
+        path: `/_plugins/_security/api/internalusers/${username}`,
+        body,
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('Create user failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete an internal user
+   */
+  async deleteUser(username: string): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'DELETE',
+        path: `/_plugins/_security/api/internalusers/${username}`,
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('Delete user failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user details
+   */
+  async getUser(username: string): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'GET',
+        path: `/_plugins/_security/api/internalusers/${username}`,
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('Get user failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * List all internal users
+   */
+  async listUsers(): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'GET',
+        path: '/_plugins/_security/api/internalusers',
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('List users failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a role with permissions
+   */
+  async createRole(roleName: string, permissions: any): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'PUT',
+        path: `/_plugins/_security/api/roles/${roleName}`,
+        body: permissions,
+      });
+
+      return response.body;
+    } catch (error: any) {
+      console.error('Create role failed:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      if (error.meta?.body) {
+        console.error('Response body:', JSON.stringify(error.meta.body, null, 2));
+      }
+      throw new Error(`Failed to create role: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Delete a role
+   */
+  async deleteRole(roleName: string): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'DELETE',
+        path: `/_plugins/_security/api/roles/${roleName}`,
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('Delete role failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get role details
+   */
+  async getRole(roleName: string): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'GET',
+        path: `/_plugins/_security/api/roles/${roleName}`,
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('Get role failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * List all roles
+   */
+  async listRoles(): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'GET',
+        path: '/_plugins/_security/api/roles',
+      });
+
+      return response.body;
+    } catch (error: any) {
+      console.error('List roles failed:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      if (error.meta?.body) {
+        console.error('Response body:', JSON.stringify(error.meta.body, null, 2));
+      }
+      throw new Error(`Failed to list roles: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create role mapping (assign roles to users/backend roles)
+   */
+  async createRoleMapping(roleName: string, users?: string[], backendRoles?: string[], hosts?: string[]): Promise<any> {
+    try {
+      const body: any = {};
+
+      if (users && users.length > 0) {
+        body.users = users;
+      }
+
+      if (backendRoles && backendRoles.length > 0) {
+        body.backend_roles = backendRoles;
+      }
+
+      if (hosts && hosts.length > 0) {
+        body.hosts = hosts;
+      }
+
+      const response = await this.client.transport.request({
+        method: 'PUT',
+        path: `/_plugins/_security/api/rolesmapping/${roleName}`,
+        body,
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('Create role mapping failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get role mapping
+   */
+  async getRoleMapping(roleName: string): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'GET',
+        path: `/_plugins/_security/api/rolesmapping/${roleName}`,
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('Get role mapping failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * List all role mappings
+   */
+  async listRoleMappings(): Promise<any> {
+    try {
+      const response = await this.client.transport.request({
+        method: 'GET',
+        path: '/_plugins/_security/api/rolesmapping',
+      });
+
+      return response.body;
+    } catch (error) {
+      console.error('List role mappings failed:', error);
+      throw error;
+    }
   }
 
   /**
